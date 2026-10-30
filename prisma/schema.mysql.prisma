@@ -1,0 +1,111 @@
+// FarmPrice AI — MySQL 8 schema (production)
+// ---------------------------------------------------------------------------
+// Usage (see database/MYSQL_SETUP.md for the full guide):
+//   1. Add to .env:        MYSQL_URL="mysql://USER:PASSWORD@localhost:3306/farmprice"
+//   2. Generate client:    npx prisma generate --schema prisma/schema.mysql.prisma
+//   3. Create tables:      npx prisma db push   --schema prisma/schema.mysql.prisma
+//      (or import database/mysql-schema.sql directly with the mysql CLI)
+//
+// This is a 1:1 mirror of prisma/schema.prisma (SQLite dev) — identical
+// models, defaults and indexes; only the datasource provider and the
+// MySQL column types (@db.VarChar / @db.Text / @db.DateTime(3)) differ.
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/mysql-client"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("MYSQL_URL")
+}
+
+model Market {
+  id         String        @id @db.VarChar(64)
+  name       String        @db.VarChar(191)
+  nameTa     String        @db.VarChar(191)
+  district   String        @db.VarChar(191)
+  districtTa String        @db.VarChar(191)
+  lat        Float
+  lng        Float
+  factor     Float // relative wholesale premium/discount of this market
+  prices     PriceRecord[]
+  alerts     Alert[]
+
+  @@index([district])
+}
+
+model Crop {
+  id         String        @id @db.VarChar(64)
+  name       String        @db.VarChar(191)
+  nameTa     String        @db.VarChar(191)
+  category   String        @db.VarChar(191)
+  unit       String        @default("quintal") @db.VarChar(191)
+  basePrice  Float // reference modal price in INR / quintal
+  volatility Float // daily relative volatility
+  spoilage   Float // % lost per 10 km of transport (perishability)
+  months     String // seasonal month multipliers, comma separated (12 values)
+  prices     PriceRecord[]
+  alerts     Alert[]
+
+  @@index([category])
+}
+
+model PriceRecord {
+  id         String   @id @default(cuid()) @db.VarChar(191)
+  cropId     String   @db.VarChar(64)
+  marketId   String   @db.VarChar(64)
+  date       DateTime @db.DateTime(3)
+  minPrice   Float
+  maxPrice   Float
+  modalPrice Float
+  crop       Crop     @relation(fields: [cropId], references: [id])
+  market     Market   @relation(fields: [marketId], references: [id])
+
+  @@unique([cropId, marketId, date])
+  @@index([cropId, marketId, date])
+  @@index([date])
+}
+
+model Profile {
+  deviceId  String   @id @db.VarChar(191)
+  name      String   @db.VarChar(191)
+  phone     String?  @db.VarChar(32)
+  district  String?  @db.VarChar(191)
+  language  String   @default("en") @db.VarChar(8)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+}
+
+model Alert {
+  id          String    @id @default(cuid()) @db.VarChar(191)
+  deviceId    String    @db.VarChar(191)
+  cropId      String    @db.VarChar(64)
+  marketId    String    @db.VarChar(64)
+  targetPrice Float
+  direction   String    @db.VarChar(8) // ABOVE | BELOW
+  active      Boolean   @default(true)
+  triggeredAt DateTime? @db.DateTime(3)
+  createdAt   DateTime  @default(now()) @db.DateTime(3)
+  crop        Crop      @relation(fields: [cropId], references: [id])
+  market      Market    @relation(fields: [marketId], references: [id])
+
+  @@index([deviceId])
+  @@index([active])
+}
+
+model Notification {
+  id        String   @id @default(cuid()) @db.VarChar(191)
+  deviceId  String   @db.VarChar(191)
+  title     String   @db.VarChar(191)
+  body      String   @db.Text
+  type      String   @default("ALERT") @db.VarChar(16) // ALERT | INFO
+  cropId    String?  @db.VarChar(64)
+  marketId  String?  @db.VarChar(64)
+  price     Float?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+
+  @@index([deviceId, createdAt])
+}
