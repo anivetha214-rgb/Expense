@@ -1,0 +1,94 @@
+// FarmPrice AI — Prisma schema
+// NOTE: This schema is intentionally MySQL-compatible (types, relations, indexes).
+// The sandbox preview runs SQLite (see database/ folder for the MySQL migration kit:
+// `prisma/schema.mysql.prisma` + `database/mysql-schema.sql`).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Market {
+  id         String        @id
+  name       String
+  nameTa     String
+  district   String
+  districtTa String
+  lat        Float
+  lng        Float
+  factor     Float // relative wholesale premium/discount of this market
+  prices     PriceRecord[]
+  alerts     Alert[]
+}
+
+model Crop {
+  id         String        @id
+  name       String
+  nameTa     String
+  category   String
+  unit       String        @default("quintal")
+  basePrice  Float // reference modal price in INR / quintal
+  volatility Float // daily relative volatility
+  spoilage   Float // % lost per 10 km of transport (perishability)
+  months     String // seasonal month multipliers, comma separated (12 values)
+  prices     PriceRecord[]
+  alerts     Alert[]
+}
+
+model PriceRecord {
+  id         String   @id @default(cuid())
+  cropId     String
+  marketId   String
+  date       DateTime
+  minPrice   Float
+  maxPrice   Float
+  modalPrice Float
+  crop       Crop     @relation(fields: [cropId], references: [id])
+  market     Market   @relation(fields: [marketId], references: [id])
+
+  @@unique([cropId, marketId, date])
+  @@index([cropId, marketId, date])
+}
+
+model Profile {
+  deviceId  String   @id
+  name      String
+  phone     String?
+  district  String?
+  language  String   @default("en")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Alert {
+  id          String    @id @default(cuid())
+  deviceId    String
+  cropId      String
+  marketId    String
+  targetPrice Float
+  direction   String // ABOVE | BELOW
+  active      Boolean   @default(true)
+  triggeredAt DateTime?
+  createdAt   DateTime  @default(now())
+  crop        Crop      @relation(fields: [cropId], references: [id])
+  market      Market    @relation(fields: [marketId], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  deviceId  String
+  title     String
+  body      String
+  type      String   @default("ALERT") // ALERT | INFO
+  cropId    String?
+  marketId  String?
+  price     Float?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([deviceId, createdAt])
+}
